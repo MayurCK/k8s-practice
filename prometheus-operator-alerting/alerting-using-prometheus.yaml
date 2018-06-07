@@ -1,0 +1,359 @@
+#Ref urls: https://pierrevincent.github.io/2017/12/prometheus-blog-series-part-5-alerting-rules/,
+#Ref urls:https://github.com/coreos/prometheus-operator/blob/master/Documentation/user-guides/alerting.md
+#Ref urls: https://github.com/prometheus/prometheus/blob/master/docs/configuration/alerting_rules.md
+#Ref urls: https://rancher.com/comparing-monitoring-options-for-docker-deployments/
+
+
+#----------------------------------Prometheus operator--------------------------#
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-operator
+subjects:
+- kind: ServiceAccount
+  name: prometheus-operator
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: prometheus-operator
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - thirdpartyresources
+  verbs:
+  - "*"
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - "*"
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers
+  - prometheuses
+  - prometheuses/finalizers
+  - alertmanagers/finalizers
+  - servicemonitors
+  verbs:
+  - "*"
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  - secrets
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", "delete"]
+- apiGroups: [""]
+  resources:
+  - services
+  - endpoints
+  verbs: ["get", "create", "update"]
+- apiGroups: [""]
+  resources:
+  - nodes
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources:
+  - namespaces
+  verbs: ["list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-operator
+---
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: prometheus-operator
+  name: prometheus-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: prometheus-operator
+  template:
+    metadata:
+      labels:
+        k8s-app: prometheus-operator
+    spec:
+      containers:
+      - args:
+        - --kubelet-service=kube-system/kubelet
+        - --config-reloader-image=quay.io/coreos/configmap-reload:v0.0.1
+        image: quay.io/coreos/prometheus-operator:v0.17.0
+        name: prometheus-operator
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 50Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      serviceAccountName: prometheus-operator
+
+#--------------------alert-managers------------------#
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: example
+spec:
+  replicas: 3
+---
+#--------------------alert-managers-configuration-secret------------------#
+Version: v1
+kind: Secret
+metadata:
+  name: alertmanager-example
+data:
+  alertmanager.yaml: |-
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'webhook'
+    receivers:
+    - name: 'webhook'
+      webhook_configs:
+      - url: 'http://alertmanagerwh:30500/'
+---
+#--------------------service to access the alert manager----------------#
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-example
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    nodePort: 30903
+    port: 9093
+    protocol: TCP
+    targetPort: web
+  selector:
+    alertmanager: example
+---
+#--------------------ingress rule for the alert manager service optional --------#
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: haproxy
+  name: alertmanager-ingress
+  namespace: default
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: alertmanager-example
+          servicePort: 9093
+        path: /alrt
+status:
+  loadBalancer: {}
+---
+#-------------------------------Prometheus instance for sending alerts , it will connect to the alertmanager-example service and the select the service via svcMonitorSelector
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: example
+spec:
+  replicas: 2
+  alerting:
+    alertmanagers:
+    - namespace: default
+      name: alertmanager-example
+      port: web
+  serviceMonitorSelector:
+    matchLabels:
+      team: frontend
+  ruleSelector:
+    matchLabels:
+      role: alert-rules
+      prometheus: example
+  scrapeInterval: 10s      
+  additionalScrapeConfigs: # for additional configuration that you need to add look at the api for operator.
+
+---
+#------------------------------alert rules config map---------------------#
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: prometheus-example-rules
+  labels:
+    role: alert-rules
+    prometheus: example
+data: # here we have added the dynamic values in summary msg using # To insert a firing element's label values: {{ $labels.<labelname> }} and for value(numeric expressions) {{ $value }}
+  example.rules.yaml: |+
+    groups:
+    - name: ./example.rules
+      rules:
+      - alert: Lots_Of_Jobs_In_Queue
+        expr: queued_req > 100
+        for: 10s
+        labels:
+          severity: major
+        annotations:
+          summary: Billing queue appears to be building up (consistently more than 100 jobs waiting)
+      - alert: Alarm_Generated
+        expr: alarm_requests{alarmId="E1"} = 150
+        for: 10s
+        labels:
+          severity: major
+        annotations:   
+          summary: Error in doing nle model loading instance: {{ $labels.instance }} , job: {{ $labels.job }} , current value: {{ $value }} , pod: {{ $labels.job }} and alarmId: {{ $labels.alarmId }}.
+      - alert: Alarm_Gen
+        expr: alarm_requests_without_label > 10.0
+        for: 5s
+        labels:
+          severity: major
+        annotations:
+          summary: Error in doing nle model loading gauge without label.
+---
+#----------------------------svc for exposing prometheus instance-----------------#
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-svc
+spec:
+  type: NodePort
+    ports:
+  - nodePort: 30900
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    prometheus: example
+---
+#-----------------------------haproxy ingress for prometheus-svc-----------------#
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /   # It will rewrite the requested url with defined path strip down the match words and remaining is sent to the server. 
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: haproxy
+  name: prometheus-instance-ingress
+  namespace: default
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: prometheus-svc
+          servicePort: 9090
+        path: /graph/graph  #These because the prometheus redirect to /graph by defalut.
+      - backend:
+          serviceName: prometheus-svc
+          servicePort: 9090
+        path: /     
+status:
+  loadBalancer: {}
+# for basic auth ref link https://github.com/jcmoraisjr/haproxy-ingress/tree/master/examples/auth/basic
+#---------------------------------sample app for which we have to use alerts-------------#
+#---------------------------------------Custom Exporter-----------------#
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: alert-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: alert-app
+    spec:
+      containers:
+      - name: alert-app
+        image: mayurhingnekar/prometheus-spring-boot-exporter:latest     # update metrics via http://svc/update?alarmId=6 and get metrices via http://cs-svc/prometheus-metrics
+        ports:
+        - name: metrics
+          containerPort: 8081
+        - name: update
+          containerPort: 8080
+---
+#---------------------------------------Custom Exporter svc----------------#
+kind: Service
+apiVersion: v1
+metadata:
+  name: alert-app
+  labels:
+    app: alert-app
+spec:
+  selector:
+    app: alert-app
+  ports:
+  - name: metrics
+    port: 8889
+    targetPort: 8081
+  - name: update
+    port: 8888
+    targetPort: 8080
+---
+#---------------------------------------Custom Exporter svc monitor 3rd party-----------------#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alert-app
+  labels:
+    team: frontend  #----this is than used by the Prometheus instance for monitoring svc#
+spec:
+  selector:
+    matchLabels:
+      app: alert-app
+  endpoints: # You can have multiple endpoint that can be configured for scraping the metrics , path is the metric_path used by prometheus,
+  - port: metrics #it should be always string not a number , the prometheus than hit to svc:targetPort of port "metrics"/prometheus-metrics
+    path: /prometheus-metrics
+  #- port: update   You can configure another endpoint 
+  #  path: /update
+
+
+---
+
+
+#sending alerts directly to alert manager:
+#1.curl -H "Content-Type: application/json" -d '[{"status":"resolved", "labels":{"alertname":"TestAlert1"}}]' localhost:9093changes(prometheus_config_last_reload_success_timestamp_seconds[5m])
+
+# resolving alert:
+# curl -XPOST $url -d "[{ \"status\": \"firing\", \"labels\": { \"alertname\": \"alerttest2\", \"service\": \"my-service\", \"severity\":\"warning\" }, \"annotations\": { \"summary\": \"High latency is high!\" } }]"
+
+
+
+# resolving alerts automatically after a defined interval of time:
+ # ResolveTimeout is the time after which an alert is declared resolved
+  # if it has not been updated.
+#  [ resolve_timeout: <duration> | default = 5m ]
+#setting metrics
+#curl -G 'http://10.103.64.226:8888/sendalarm?alarmId=E1&time=50000' --data-urlencode "alarmMsg=the value of the var is 160 should be 30"

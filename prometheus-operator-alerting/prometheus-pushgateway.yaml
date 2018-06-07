@@ -1,0 +1,50 @@
+#---------------------------------------Push Gateway-----------------#
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: pushgateway-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: pushgateway-app
+    spec:
+      containers:
+      - name: pushgateway-app
+        image: prom/pushgateway     # update metrics via http://svc/update?alarmId=6 and get metrices via http://cs-svc/prometheus-metrics
+        ports:
+        - name: metrics
+          containerPort: 9091
+---
+#---------------------------------------Push Gateway svc----------------#
+kind: Service
+apiVersion: v1
+metadata:
+  name: pushgateway-app-svc
+  labels:
+    app: pushgateway-app-svc
+spec:
+  selector:
+    app: pushgateway-app
+  ports:
+  - name: metrics
+    port: 9002
+    targetPort: 9091
+---
+#---------------------------------------Push Gateway svc monitor 3rd party-----------------#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alert-app
+  labels:
+    team: frontend  #----this is than used by the Prometheus instance for monitoring svc----#
+spec:
+  selector:
+    matchLabels:
+      app: pushgateway-app-svc
+  endpoints: # You can have multiple endpoint that can be configured for scraping the metrics , path is the metric_path used by prometheus,
+  - port: metrics #it should be always string not a number , the prometheus than hit to svc:targetPort of port "metrics"/prometheus-metrics
+    #path: /prometheus-metrics
+    honorLabels: true  # This will take care of the ovirriding done by push gateway.
+---
