@@ -245,20 +245,3 @@ spec:
   selector:
     run: haproxy-ingress
   type: NodePort
-# -----------haproxy ingress ---------------------------#
----
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  name: sampleapp-ingress
-  annotations:
-    kubernetes.io/ingress.class: "haproxy"
-spec:
-  rules:
-  - host: master
-    http:
-      paths:
-      - path: /
-        backend:
-          serviceName: sampleapp-svc
-          servicePort: 80
