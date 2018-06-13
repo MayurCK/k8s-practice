@@ -1,0 +1,54 @@
+#Please first deploy the haproxy ingress controller in k8s cluster using ingress-setup/haproxy.yaml
+#Use this to test it ingress
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: hello-rc
+spec:
+  replicas: 3
+  selector:
+    app: hello-world
+  template:
+    metadata:
+      labels:
+        app: hello-world
+    spec:
+      containers:
+      - name: hello-pod
+        image: nigelpoulton/pluralsight-docker-ci:latest
+        ports:
+        - containerPort: 8080
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    app: hello-world
+  name: hello-world-svc
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  selector:
+    app: hello-world
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: sampleapp-ingress
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /   
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: "haproxy"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /sample
+        backend:
+          serviceName: hello-world-svc
+          servicePort: 8080
