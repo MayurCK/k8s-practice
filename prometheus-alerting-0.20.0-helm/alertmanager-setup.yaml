@@ -1,0 +1,53 @@
+#Setup the alertmanager 
+#--- create a alertmanager secret first ---#
+#kubectl create secret generic alertmanager-example --from-file=alertmanager.yaml
+#--------------------alert-managers------------------#
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: alertmanager
+  namespace: alerting
+spec:
+  replicas: 1
+---
+#--------------------service to access the alert manager----------------#
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-svc
+  namespace: alerting
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    nodePort: 30903
+    port: 9093
+    protocol: TCP
+    targetPort: web
+  selector:
+    alertmanager: alertmanager
+---
+#--------------------ingress rule for the alert manager service optional --------#
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: haproxy
+  name: alertmanager-ingress
+  namespace: alerting
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: alertmanager-svc
+          servicePort: 9093
+        path: /alrt
+status:
+  loadBalancer: {}
+---
