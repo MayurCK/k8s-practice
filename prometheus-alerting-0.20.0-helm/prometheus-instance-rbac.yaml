@@ -1,9 +1,3 @@
-#Adding the coreos repo for helm
-#helm repo add coreos https://s3-eu-west-1.amazonaws.com/coreos-charts/stable/
-#Create a k8s namespaces
-#kubectl create ns alerting
-#install prometheus operator
-#helm install --name helm coreos/prometheus-operator --namespace alerting
 #Provide the required access for prometheus instance
 # ------------------------------------#
 apiVersion: v1
@@ -46,5 +40,3 @@ subjects:
   name: prometheus
   namespace: alerting
 # ------------------------------------#
-
-
