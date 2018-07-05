@@ -1,2 +1,2 @@
 # k8s-practice
-Repo for practicing k8s. These is just for learning.
+Repo for practicing k8s. This is just for learning.
