@@ -1,0 +1,2 @@
+npm install # to build the app based on the package.json
+node pushgateway-sample.js # to run the app.
