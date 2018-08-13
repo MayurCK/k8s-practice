@@ -7,7 +7,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Alertmanager
 metadata:
   name: alertmanager
-  namespace: alerting
+  namespace: monitoring
 spec:
   replicas: 1
 ---
@@ -16,7 +16,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: alertmanager-svc
-  namespace: alerting
+  namespace: monitoring
 spec:
   type: NodePort
   ports:
@@ -39,7 +39,7 @@ metadata:
     ingress.kubernetes.io/ssl-redirect: "false"
     kubernetes.io/ingress.class: haproxy
   name: alertmanager-ingress
-  namespace: alerting
+  namespace: monitoring
 spec:
   rules:
   - http:
