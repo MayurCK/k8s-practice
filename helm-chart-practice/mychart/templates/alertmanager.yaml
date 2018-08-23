@@ -1,0 +1,10 @@
+#--------------------alert-managers------------------#
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: alertmanager
+  annotations:
+    "helm.sh/hook-weight": "1"
+spec:
+  replicas: 1
+---
