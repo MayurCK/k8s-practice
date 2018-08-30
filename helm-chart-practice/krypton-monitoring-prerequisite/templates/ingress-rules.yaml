@@ -1,0 +1,49 @@
+#-----------------------------haproxy ingress for prometheus-svc-----------------#
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /   # It will rewrite the requested url with defined path strip down the match words and remaining is sent to the server. 
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: haproxy
+  name: prometheus-instance-ingress
+  namespace: monitoring
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: prometheus-svc
+          servicePort: 9090
+        path: /graph/graph  #These because the prometheus redirect to /graph by defalut.
+      - backend:
+          serviceName: prometheus-svc
+          servicePort: 9090
+        path: /     
+status:
+  loadBalancer: {}
+---
+#--------------------ingress rule for the alert manager service optional --------#
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/auth-tls-cert-header: "false"
+    ingress.kubernetes.io/rewrite-target: /
+    ingress.kubernetes.io/ssl-passthrough: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    kubernetes.io/ingress.class: haproxy
+  name: alertmanager-ingress
+  namespace: monitoring
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: alertmanager-svc
+          servicePort: 9093
+        path: /alrt
+status:
+  loadBalancer: {}

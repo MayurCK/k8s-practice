@@ -1,0 +1,6 @@
+dependencies:
+- name: prometheus-operator
+  repository: https://s3-eu-west-1.amazonaws.com/coreos-charts/stable/
+  version: 0.0.29
+digest: sha256:2b637cc0827afe1cb8f695bd0959a7b2e78efc2effcb4dba74be0546de043011
+generated: 2018-08-20T12:16:18.093763272Z

@@ -1,0 +1,61 @@
+#---------------------------------------Custom Exporter-----------------#
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: alert-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: alert-app
+    spec:
+      containers:
+      - name: alert-app
+        image: mayurhingnekar/prometheus-spring-boot-exporter:latest     # update metrics via http://svc/update?alarmId=6 and get metrices via http://cs-svc/prometheus-metrics
+        ports:
+        - name: metrics
+          containerPort: 8081
+        - name: update
+          containerPort: 8080
+---
+#---------------------------------------Custom Exporter svc----------------#
+kind: Service
+apiVersion: v1
+metadata:
+  name: alert-app
+  labels:
+    app: alert-app
+spec:
+  selector:
+    app: alert-app
+  ports:
+  - name: metrics
+    port: 8889
+    targetPort: 8081
+  - name: update
+    port: 8888
+    targetPort: 8080
+---
+#---------------------------------------Custom Exporter svc monitor 3rd party-----------------#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alert-app
+  labels:
+    team: coretech  #----this is than used by the Prometheus instance for monitoring svc#
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: alert-app
+  endpoints: # You can have multiple endpoint that can be configured for scraping the metrics , path is the metric_path used by prometheus,
+  - port: metrics #it should be always string not a number , the prometheus than hit to svc:targetPort of port "metrics"/prometheus-metrics
+    path: /prometheus-metrics
+  namespaceSelector:
+    any: true
+  #- port: update   You can configure another endpoint 
+  #  path: /update
+
+
+---
