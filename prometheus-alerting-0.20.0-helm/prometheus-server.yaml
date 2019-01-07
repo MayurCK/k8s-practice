@@ -11,6 +11,7 @@ spec:
     - namespace: monitoring
       name: alertmanager-svc
       port: web
+  serviceAccountName: prometheus-server
   serviceMonitorSelector:
     matchLabels:
       team: frontend
